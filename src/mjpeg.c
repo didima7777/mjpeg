@@ -5,6 +5,7 @@
 
 
 #define HDLR_COMPONENT_NAME_SIZE 16
+#define UNUSED(x) (void)(x)
 
 #pragma pack(push,1)
 typedef struct HANDLER_MEDIA_INDEX_s {
@@ -15,6 +16,7 @@ typedef struct HANDLER_MEDIA_INDEX_s {
 }HANDLER_MEDIA_INDEX_sT;
 
 typedef struct MEDIA_INDEX_s {
+	uint8_t  ckid[4];
     uint8_t  flags;
     uint32_t offset;
     uint32_t length;
@@ -64,7 +66,7 @@ uint32_t swap_uint32(uint32_t data)
 
 uint32_t seek_movie_file_in_list(char chackAtomName[4], FILE *handle, uint32_t offset, uint32_t *length)
 {
-    uint32_t size, loadAtomSize;
+    uint32_t size, loadAtomSize, length_of_ulong;
     uint32_t file_offset;
     uint8_t  loadAtomName[4] = { 0x00 };
     uint8_t  cnt             = 0;
@@ -75,23 +77,24 @@ uint32_t seek_movie_file_in_list(char chackAtomName[4], FILE *handle, uint32_t o
         return 0;
     }
 
-    file_offset = offset;
+    length_of_ulong = sizeof(uint32_t);
+    file_offset     = offset;
     while (1)
     {
         // read list name
         fseek(handle, file_offset, SEEK_SET);
-        fread((void *)&loadAtomName, 1, sizeof(uint32_t), handle);
+        fread((void *)&loadAtomName, 1, length_of_ulong, handle);
 
         // read header size
         file_offset += 4;
-        fread((void *)&size, 1, sizeof(uint32_t), handle);
+        fread((void *)&size, 1, length_of_ulong, handle);
         loadAtomSize = size;
 
         if (memcmp("LIST", loadAtomName, 4) == 0)
         {
             // read header name
             file_offset += 4;
-            fread((void *)&loadAtomName, 1, sizeof(uint32_t), handle);
+            fread((void *)&loadAtomName, 1, length_of_ulong, handle);
             if (memcmp(chackAtomName, loadAtomName, 4) == 0)
             {
                 *length = loadAtomSize;
@@ -114,7 +117,7 @@ uint32_t seek_movie_file_in_list(char chackAtomName[4], FILE *handle, uint32_t o
 
 uint32_t read_movie_index(FILE *handle, uint32_t offset, uint32_t movi_offset)
 {
-    uint32_t size, loadAtomSize, i = 0;
+    uint32_t size, loadAtomSize, length_of_ulong, length_of_index_st, i = 0;
     uint32_t file_offset;
     uint8_t  loadAtomName[4] = { 0x00 };
     HANDLER_MEDIA_INDEX_sT media_index;
@@ -124,28 +127,30 @@ uint32_t read_movie_index(FILE *handle, uint32_t offset, uint32_t movi_offset)
         printf("open file error!\r\n");
         return 0;
     }
+    length_of_ulong    = sizeof(uint32_t);
+    length_of_index_st = sizeof(HANDLER_MEDIA_INDEX_sT);
 
     file_offset = offset;
     // read list name
     fseek(handle, file_offset, SEEK_SET);
-    fread((void *)&loadAtomName, 1, sizeof(uint32_t), handle);
+    fread((void *)&loadAtomName, 1, length_of_ulong, handle);
 
     // read header size
     file_offset += 4;
-    fread((void *)&size, 1, sizeof(uint32_t), handle);
+    fread((void *)&size, 1, length_of_ulong, handle);
     loadAtomSize = size;
     if (memcmp("idx1", loadAtomName, 4) == 0)
     {
         while (loadAtomSize > 0)
         {
-            fread((void *)&media_index, 1, sizeof(HANDLER_MEDIA_INDEX_sT), handle);
-
+            fread((void *)&media_index, 1, length_of_index_st, handle);
+            memcpy(media_list[i].ckid, media_index.ckid, 4);
             media_list[i].flags  = media_index.flags & 0xFF;
             media_list[i].offset = media_index.offset + movi_offset + 4;
             media_list[i].length = media_index.length;
 
-            memset((void *)&media_index, 0x00, sizeof(HANDLER_MEDIA_INDEX_sT));
-            loadAtomSize -= sizeof(HANDLER_MEDIA_INDEX_sT);
+            memset((void *)&media_index, 0x00, length_of_index_st);
+            loadAtomSize -= length_of_index_st;
             i++;
         }
     }
@@ -155,7 +160,7 @@ uint32_t read_movie_index(FILE *handle, uint32_t offset, uint32_t movi_offset)
 
 uint32_t read_movie_info(FILE *handle, uint32_t offset)
 {
-    uint32_t size, loadAtomSize;
+    uint32_t size, loadAtomSize, length_of_ulong;
     uint32_t file_offset;
     uint8_t  loadAtomName[4] = { 0x00 };
 
@@ -164,22 +169,24 @@ uint32_t read_movie_info(FILE *handle, uint32_t offset)
         printf("open file error!\r\n");
         return 0;
     }
+    length_of_ulong = sizeof(uint32_t);
 
     file_offset = offset;
     // read list name
     fseek(handle, file_offset, SEEK_SET);
-    fread((void *)&loadAtomName, 1, sizeof(uint32_t), handle);
+    fread((void *)&loadAtomName, 1, length_of_ulong, handle);
     if (memcmp("hdrl", loadAtomName, 4) == 0)
     {
         //next atom
         file_offset += 4;
         fseek(handle, file_offset, SEEK_SET);
-        fread((void *)&loadAtomName, 1, sizeof(uint32_t), handle);
+        fread((void *)&loadAtomName, 1, length_of_ulong, handle);
 
         // read header size
         file_offset += 4;
-        fread((void *)&size, 1, sizeof(uint32_t), handle);
+        fread((void *)&size, 1, length_of_ulong, handle);
         loadAtomSize = size;
+        UNUSED(loadAtomSize);
         if (memcmp("avih", loadAtomName, 4) == 0)
         {
             fread((void *)&avih_info, 1, sizeof(AVIH_ATOM_INFO_sT), handle);
@@ -287,9 +294,9 @@ int read_avinfo(const char *file)
     // stream : 2, video & audio channel
     while (count < avih_info.frames)
     {
-        if (media_list[i].flags == 0x10)
+        if (memcmp("dc", media_list[i].ckid+2, 2) == 0)
         {
-            //printf("index[%d]: flags = %d, length = %d, offset = 0x%08X\r\n", i, index[i].flags, index[i].length, index[i].offset);
+            //printf("index[%d]: flags = %d, length = %d, offset = 0x%08X\r\n", i, media_list[i].flags, media_list[i].length, media_list[i].offset);
             read_movie_image(pFile, media_list[i].offset);
             count++;
         }
